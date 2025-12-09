@@ -9,6 +9,15 @@ import itertools
 # a wordlist for hashcat
 # ------------------------------------------------------
 
+
+# Example Usage
+# cewl localhost:8000/test.php -d 3 -m 6 --with-numbers -w cewl_list.txt
+## crawls the webpage with a depth of 3, only grabs words with a min length of 6
+
+# python3 generate_wordlist.py -i cewl_list.txt -o custom_wordlist.txt --min-length 12 --numbers 1998
+## inputs cewl_list.txt, has a password length requirement of 12, and includes the number 1998
+### 1998 will get added to a list of common numbers to create combinations with (1, 123, 321, 777...)
+
 # ------------------------------------------------------
 # Fallback common numbers (used if --numbers not supplied)
 # ------------------------------------------------------
