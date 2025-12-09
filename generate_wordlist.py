@@ -4,6 +4,12 @@ import argparse
 import itertools
 
 # ------------------------------------------------------
+# Custom wordlist generator that will take wordlist from
+# cewl and make permutations of those words to generate
+# a wordlist for hashcat
+# ------------------------------------------------------
+
+# ------------------------------------------------------
 # Fallback common numbers (used if --numbers not supplied)
 # ------------------------------------------------------
 COMMON_FALLBACK_NUMBERS = [
@@ -73,6 +79,30 @@ def generate_candidates(words, numbers, symbols, min_len, out_file):
 
     print(f"[+] Total base variants: {len(expanded)}")
 
+    # ---- Progress estimation ----
+    count_words = len(expanded)
+    count_nums = len(numbers)
+    count_syms = len(symbols)
+
+    total_pattern1 = count_words * count_nums * count_syms
+    total_pairs = count_words * (count_words - 1)   # w1 != w2
+    total_pattern2 = total_pairs * count_nums * count_syms
+    total_pattern3 = total_pairs * count_syms * count_nums
+    total_pattern4 = count_nums * count_words * count_syms
+
+    total_candidates = total_pattern1 + total_pattern2 + total_pattern3 + total_pattern4
+    print(f"[+] About to test ~{total_candidates} candidates (before policy filter)")
+
+    processed = 0
+
+    def update_progress():
+        nonlocal processed
+        processed += 1
+        # Print every 10k candidates, and at the very end
+        if processed % 10_000 == 0 or processed == total_candidates:
+            percent = (processed / total_candidates) * 100
+            print(f"[+] Progress: {processed}/{total_candidates} (~{percent:.2f}%)")
+
     written = 0
 
     with open(out_file, "w", encoding="utf-8") as f:
@@ -84,6 +114,7 @@ def generate_candidates(words, numbers, symbols, min_len, out_file):
             for n in numbers:
                 for s in symbols:
                     pw = f"{w}{n}{s}"
+                    update_progress()
                     if passes_policy(pw, min_len, symbols_set):
                         f.write(pw + "\n")
                         written += 1
@@ -98,6 +129,7 @@ def generate_candidates(words, numbers, symbols, min_len, out_file):
             for n in numbers:
                 for s in symbols:
                     pw = f"{base}{n}{s}"
+                    update_progress()
                     if passes_policy(pw, min_len, symbols_set):
                         f.write(pw + "\n")
                         written += 1
@@ -111,6 +143,7 @@ def generate_candidates(words, numbers, symbols, min_len, out_file):
             for s in symbols:
                 for n in numbers:
                     pw = f"{w1}{s}{w2}{n}"
+                    update_progress()
                     if passes_policy(pw, min_len, symbols_set):
                         f.write(pw + "\n")
                         written += 1
@@ -122,6 +155,7 @@ def generate_candidates(words, numbers, symbols, min_len, out_file):
             for w in expanded:
                 for s in symbols:
                     pw = f"{n}{w}{s}"
+                    update_progress()
                     if passes_policy(pw, min_len, symbols_set):
                         f.write(pw + "\n")
                         written += 1
@@ -192,12 +226,17 @@ def main():
     # ------------------------------------------------------
     # Number handling
     # ------------------------------------------------------
+    numbers_set = set(COMMON_FALLBACK_NUMBERS)
+
     if args.numbers:
-        numbers = [n.strip() for n in args.numbers.split(",") if n.strip() != ""]
-        print(f"[+] Using user-supplied numbers: {numbers}")
+        user_numbers = [n.strip() for n in args.numbers.split(",") if n.strip() != ""]
+        numbers_set.update(user_numbers)
+        print(f"[+] Using common + user-supplied numbers: {sorted(numbers_set)}")
     else:
-        numbers = COMMON_FALLBACK_NUMBERS
-        print(f"[+] No numbers supplied — using common number combos: {numbers}")
+        print(f"[+] No numbers supplied — using common number combos: {sorted(numbers_set)}")
+
+    numbers = list(numbers_set)
+
 
     print(f"[+] Using symbols: {args.symbols}")
     print(f"[+] Minimum password length: {args.min_length}")
