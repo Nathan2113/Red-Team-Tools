@@ -99,7 +99,7 @@ def generate_candidates(words, numbers, symbols, min_len, out_file):
         nonlocal processed
         processed += 1
         # Print every 10k candidates, and at the very end
-        if processed % 10_000 == 0 or processed == total_candidates:
+        if processed % 100_000 == 0 or processed == total_candidates:
             percent = (processed / total_candidates) * 100
             print(f"[+] Progress: {processed}/{total_candidates} (~{percent:.2f}%)")
 
