@@ -187,10 +187,9 @@ rules:
     ports:
       - { proto: tcp, port: 5432 }
 
+  # removing port constraint since mssql uses dynamic ports
   - bucket: mssql
     service_names: [ms-sql-s, mssql]
-    ports:
-      - { proto: tcp, port: 1433 }
 
   - bucket: mongodb
     service_names: [mongodb]
@@ -235,5 +234,4 @@ rules:
     regex:
       - field: service
         pattern: "^ssl"
-
 

@@ -1,4 +1,32 @@
 #!/usr/bin/env python3
+
+"""
+Required inputs:
+  - Nmap XML scan file (e.g. scan.xml)
+      Generated with service detection enabled (-sC -sV recommended)
+      Recommended to do -oA for all output types
+  - Service rules YAML file (e.g. service.yml)
+      Defines buckets, ports, service names, and regex patterns
+
+Usage:
+  python3 filter_nmap_services.py -x scan.xml -r service.yml [-o services]
+
+Outputs (default: ./services/):
+  - <bucket>_ips.txt           One file per service bucket
+
+  Below outputs are for testing and further implementing the script, I will get to these eventually...
+  - unknown_endpoints.txt      Detailed list of endpoints with no matching rule
+  - unknown_ports_summary.txt  Grouped unknown ports/services for rule expansion
+  - unknown_ips.txt            Hosts with no known services at all (will probably take out, not really useful)
+
+Notes:
+  - Rule order matters: first matching rule wins
+  - Prefer service-name matches for strong fingerprints (e.g. ms-sql-s)
+  - Prefer port-based rules for protocol services (e.g. WinRM)
+  - Dynamic RPC and other known-noise endpoints are automatically suppressed
+"""
+
+
 from __future__ import annotations
 
 import argparse
@@ -46,6 +74,7 @@ def parse_nmap_xml(xml_path: Path):
                 "tunnel": (svc.get("tunnel") or "").lower() if svc is not None else "",
             }
 
+
 def _field_as_text(ep, field: str) -> str:
     val = ep.get(field, "")
     if isinstance(val, list):
@@ -70,7 +99,7 @@ def matches(rule, ep):
         if not ok:
             return False
 
-    # 3) regex acts as a filter (if present) — OR across conditions
+    # 3) regex acts as a filter (if present) â€” OR across conditions
     regex_conds = rule.get("regex")
     if regex_conds is not None and len(regex_conds) > 0:
         for cond in regex_conds:
@@ -85,6 +114,15 @@ def matches(rule, ep):
 
     # 4) If rule only had service_names and/or ports and they passed, it's a match.
     return True
+
+
+def is_dynamic_rpc(ep):
+    return (
+        ep.get("proto") == "tcp" and
+        isinstance(ep.get("port"), int) and
+        ep["port"] >= 49152 and
+        ep.get("service") in ("msrpc", "ncacn_http", "ncacn_ip_tcp")
+    )
 
 
 
@@ -126,22 +164,116 @@ def main():
     args = ap.parse_args()
 
     rules = yaml.safe_load(Path(args.rules).read_text())["rules"]
+
     outdir = Path(args.out)
     outdir.mkdir(exist_ok=True)
 
+    # bucket -> set(ip)
     buckets = defaultdict(set)
 
-    for ep in parse_nmap_xml(Path(args.xml)):
-        bucket = classify(ep, rules)
-        buckets[bucket].add(ep["ip"])
+    # ip -> has any known service
+    host_has_known = defaultdict(bool)
 
+    # unknown endpoint outputs
+    unknown_endpoints = []                  # list of "ip proto/port service product"
+    unknown_port_counts = defaultdict(set)  # (proto, port, service) -> set(ips)
+
+    # track hosts that look RPC-ish (for dynamic-port suppression)
+    rpcish_hosts = set()
+
+    # services we consider noise (not worth rules)
+    NOISE_SERVICES = {"kpasswd5", "ncacn_http", "llmnr", "mc-nmf"}
+
+    for ep in parse_nmap_xml(Path(args.xml)):
+        ip = ep["ip"]
+        bucket = classify(ep, rules)
+
+        buckets[bucket].add(ip)
+
+        # mark host as known if ANY endpoint matches a real bucket
+        if bucket != "unknown":
+            host_has_known[ip] = True
+
+        # identify RPC-ish hosts
+        svc_norm = (ep.get("service") or "").lower()
+        if (
+            (ep.get("proto") == "tcp" and ep.get("port") == 135)
+            or svc_norm in ("msrpc", "ncacn_http", "ncacn_ip_tcp")
+        ):
+            rpcish_hosts.add(ip)
+
+        # capture unknown endpoints for rule expansion (with suppression)
+        if bucket == "unknown" and not is_dynamic_rpc(ep):
+            proto = ep.get("proto", "?")
+            port = ep.get("port", "?")
+            svc = ep.get("service") or "-"
+            svc_norm = svc.lower()
+            product = ep.get("product") or "-"
+
+            # suppress known-noise services
+            if svc_norm in NOISE_SERVICES:
+                continue
+
+            # suppress high-port unknowns on RPC-ish hosts (dynamic/ephemeral)
+            if (
+                proto == "tcp"
+                and isinstance(port, int)
+                and port >= 49152
+                and svc_norm in ("-", "")
+                and ip in rpcish_hosts
+            ):
+                continue
+
+            unknown_endpoints.append(f"{ip} {proto}/{port} {svc} {product}")
+            unknown_port_counts[(proto, port, svc)].add(ip)
+
+    # hosts with NO known services at all (optional)
+    unknown_ips = {ip for ip, known in host_has_known.items() if not known}
+
+    # write bucket files
     for bucket, ips in buckets.items():
         path = outdir / f"{bucket}_ips.txt"
         path.write_text("\n".join(sorted(ips)) + "\n")
 
+    # write fully-unknown hosts (optional)
+    if unknown_ips:
+        path = outdir / "unknown_ips.txt"
+        path.write_text("\n".join(sorted(unknown_ips)) + "\n")
+
+    # write unknown endpoints (detailed)
+    if unknown_endpoints:
+        path = outdir / "unknown_endpoints.txt"
+        path.write_text("\n".join(sorted(unknown_endpoints)) + "\n")
+
+    # write unknown ports summary (grouped)
+    if unknown_port_counts:
+        lines = []
+        for (proto, port, svc), ips in sorted(
+            unknown_port_counts.items(),
+            key=lambda x: (
+                x[0][0],
+                int(x[0][1]) if str(x[0][1]).isdigit() else 999999,
+                x[0][2],
+            ),
+        ):
+            lines.append(f"{proto}/{port} {svc} {len(ips)} hosts")
+        path = outdir / "unknown_ports_summary.txt"
+        path.write_text("\n".join(lines) + "\n")
+
     print(f"[+] Wrote {len(buckets)} service files to {outdir}/")
-    if "unknown" in buckets:
-        print(f"[!] unknown_ips.txt contains {len(buckets['unknown'])} hosts")
+    if unknown_ips:
+        print(f"[!] unknown_ips.txt contains {len(unknown_ips)} hosts")
+    else:
+        print("[+] No fully-unknown hosts found")
+
+    if unknown_endpoints:
+        print(f"[!] unknown_endpoints.txt contains {len(unknown_endpoints)} endpoints")
+    else:
+        print("[+] No unknown endpoints found")
+
+    if unknown_port_counts:
+        print(f"[!] unknown_ports_summary.txt contains {len(unknown_port_counts)} port/service groups")
+
 
 
 if __name__ == "__main__":
