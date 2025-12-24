@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
 """
+Recommended Nmap Scan:
+    nmap -sC -sV -p- <IP> -oA scan
+
 Required inputs:
   - Nmap XML scan file (e.g. scan.xml)
       Generated with service detection enabled (-sC -sV recommended)
