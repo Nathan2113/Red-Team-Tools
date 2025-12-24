@@ -11,6 +11,18 @@ from typing import Dict, List, Tuple, Optional
 In order to crack passwords using this script, you need the --crack command
 and a supplied wordlist
 
+The file example_dump.txt is an example secretsdump that came from GOAD
+
+After running "secretsdump.py <user>:<pass>@<IP> -just-dc-ntlm | tee dump.txt" you
+have a dump file, and can run this script to get the following files:
+
+hashcat_show.txt - The output of "hashcat --show"
+nt_hashes.txt    - List of all NT hashes dumped
+users.txt        - Wordlist of all usernamed dumped
+passwords.txt    - Wordlist of all cracked hashes
+user_hashes.txt  - List of all users and their associated NTLM hashes
+user_pass.txt    - List of all users and their cracked passwords (only cracked users placed here)
+
 
 EXAMPLE:
 python3 parse_secretsdump.py -i dump.txt --crack --wordlist rockyou.txt
