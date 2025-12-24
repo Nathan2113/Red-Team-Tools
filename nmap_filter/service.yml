@@ -1,150 +1,239 @@
-#!/usr/bin/env python3
-from __future__ import annotations
+# services.yml
 
-import argparse
-import re
-import xml.etree.ElementTree as ET
-from collections import defaultdict
-from pathlib import Path
+rules:
+  # -------------------------
+  # Core Windows / AD signals
+  # -------------------------
 
-import yaml  # pip install pyyaml
+  - bucket: smb
+    service_names: [microsoft-ds, netbios-ssn]
 
+  - bucket: rpc
+    service_names: [msrpc, rpcbind]
+    ports:
+      - { proto: tcp, port: 135 }
 
-def parse_nmap_xml(xml_path: Path):
-    root = ET.parse(xml_path).getroot()
+  - bucket: rdp
+    service_names: [ms-wbt-server, rdp]
 
-    for host in root.findall("host"):
-        status = host.find("status")
-        if status is not None and status.get("state") != "up":
-            continue
+  - bucket: winrm
+    # WinRM is frequently identified as HTTP (Microsoft HTTPAPI), so key off ports first.
+    ports:
+      - { proto: tcp, port: 5985 }   # WinRM HTTP
+      - { proto: tcp, port: 5986 }   # WinRM HTTPS
+      - { proto: tcp, port: 47001 }  # WinRM/WSMan related endpoint
 
-        addr_el = host.find("address[@addrtype='ipv4']")
-        if addr_el is None:
-            continue
-        ip = addr_el.get("addr")
+  
+  # Adding rule for wsdapi to prevent false positives for HTTP
+  - bucket: wsdapi
+    # Windows Web Services for Devices (often shows up as Microsoft HTTPAPI httpd)
+    ports:
+      - { proto: tcp, port: 5357 }
 
-        ports_el = host.find("ports")
-        if ports_el is None:
-            continue
+  - bucket: kerberos
+    service_names: [kerberos, kerberos-sec]
+    ports:
+      - { proto: tcp, port: 88 }
+      - { proto: udp, port: 88 }
+      - { proto: tcp, port: 464 }
+      - { proto: udp, port: 464 }
 
-        for port in ports_el.findall("port"):
-            state = port.find("state")
-            if state is None or state.get("state") != "open":
-                continue
+  - bucket: ldap
+    service_names: [ldap]
+    ports:
+      - { proto: tcp, port: 389 }
+      - { proto: udp, port: 389 }
 
-            proto = port.get("protocol")
-            portid = int(port.get("portid"))
+  - bucket: ldaps
+    service_names: [ldaps]
+    ports:
+      - { proto: tcp, port: 636 }
 
-            svc = port.find("service")
-            yield {
-                "ip": ip,
-                "proto": proto,
-                "port": portid,
-                "service": (svc.get("name") or "").lower() if svc is not None else "",
-                "product": (svc.get("product") or "").lower() if svc is not None else "",
-                "extrainfo": (svc.get("extrainfo") or "").lower() if svc is not None else "",
-                "tunnel": (svc.get("tunnel") or "").lower() if svc is not None else "",
-            }
+  - bucket: global_catalog
+    ports:
+      - { proto: tcp, port: 3268 }
+      - { proto: tcp, port: 3269 }
 
-def _field_as_text(ep, field: str) -> str:
-    val = ep.get(field, "")
-    if isinstance(val, list):
-        return " ".join(str(x) for x in val)
-    return str(val)
+  - bucket: dns
+    service_names: [domain, dns]
+    ports:
+      - { proto: tcp, port: 53 }
+      - { proto: udp, port: 53 }
 
-def matches(rule, ep):
-    # 1) service_names acts as a filter (if present)
-    svc_names = rule.get("service_names")
-    if svc_names is not None and len(svc_names) > 0:
-        if ep.get("service") not in svc_names:
-            return False
+  - bucket: ntp
+    service_names: [ntp]
+    ports:
+      - { proto: udp, port: 123 }
 
-    # 2) ports acts as a filter (if present)
-    ports = rule.get("ports")
-    if ports is not None and len(ports) > 0:
-        ok = False
-        for p in ports:
-            if ep.get("proto") == p.get("proto") and ep.get("port") == p.get("port"):
-                ok = True
-                break
-        if not ok:
-            return False
+  - bucket: snmp
+    service_names: [snmp]
+    ports:
+      - { proto: udp, port: 161 }
+      - { proto: udp, port: 162 }
 
-    # 3) regex acts as a filter (if present) — OR across conditions
-    regex_conds = rule.get("regex")
-    if regex_conds is not None and len(regex_conds) > 0:
-        for cond in regex_conds:
-            field = cond.get("field")
-            pattern = cond.get("pattern")
-            if not field or not pattern:
-                continue
-            text = _field_as_text(ep, field)
-            if re.search(pattern, text, re.I):
-                return True
-        return False
+  # --------------
+  # Remote access
+  # --------------
 
-    # 4) If rule only had service_names and/or ports and they passed, it's a match.
-    return True
+  - bucket: ssh
+    service_names: [ssh]
 
+  - bucket: telnet
+    service_names: [telnet]
+    ports:
+      - { proto: tcp, port: 23 }
 
+  - bucket: vnc
+    service_names: [vnc]
+    ports:
+      - { proto: tcp, port: 5900 }
+      - { proto: tcp, port: 5901 }
+      - { proto: tcp, port: 5902 }
+      - { proto: tcp, port: 5903 }
+      - { proto: tcp, port: 5904 }
+      - { proto: tcp, port: 5905 }
 
-def classify(ep, rules):
-    # SSL override first
-    svc = ep["service"]
-    tun = ep["tunnel"]
+  # -----------------
+  # Web (more specific)
+  # -----------------
+   
+  - bucket: iis
+    service_names: [http, https]
+    regex:
+      - field: product
+        pattern: '(?i)Microsoft.*IIS'
 
-    # Non-controversial SSL protocol upgrades
-    if svc == "ldap" and tun == "ssl":
-        return "ldaps"
-    if svc == "imap" and tun == "ssl":
-        return "imaps"
-    if svc == "pop3" and tun == "ssl":
-        return "pop3s"
-    if svc == "smtp" and tun == "ssl":
-        return "smtps"
+  - bucket: tomcat
+    service_names: [http, https]
+    regex:
+      - field: product
+        pattern: '(?i)Tomcat|Apache.*Tomcat'
 
-    # YAML rules win first (ports, service names, regex)
-    for rule in rules:
-        if matches(rule, ep):
-            return rule["bucket"]
+  - bucket: apache
+    service_names: [http, https]
+    regex:
+      - field: product
+        pattern: '(?i)Apache.*httpd'
 
-    # Generic web classification LAST
-    if svc == "https":
-        return "https"
-    if svc in ("http", "http-alt", "http-proxy") and tun == "ssl":
-        return "https"
-    if svc in ("http", "http-alt", "http-proxy"):
-        return "http"
-
-    return "unknown"
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("-x", "--xml", required=True, help="Nmap XML output")
-    ap.add_argument("-r", "--rules", required=True, help="Service rules YAML")
-    ap.add_argument("-o", "--out", default="services", help="Output folder (default: services)")
-    args = ap.parse_args()
-
-    rules = yaml.safe_load(Path(args.rules).read_text())["rules"]
-    outdir = Path(args.out)
-    outdir.mkdir(exist_ok=True)
-
-    buckets = defaultdict(set)
-
-    for ep in parse_nmap_xml(Path(args.xml)):
-        bucket = classify(ep, rules)
-        buckets[bucket].add(ep["ip"])
-
-    for bucket, ips in buckets.items():
-        path = outdir / f"{bucket}_ips.txt"
-        path.write_text("\n".join(sorted(ips)) + "\n")
-
-    print(f"[+] Wrote {len(buckets)} service files to {outdir}/")
-    if "unknown" in buckets:
-        print(f"[!] unknown_ips.txt contains {len(buckets['unknown'])} hosts")
+  - bucket: nginx
+    service_names: [http, https]
+    regex:
+      - field: product
+        pattern: '(?i)\bnginx\b'
 
 
-if __name__ == "__main__":
-    main()
+  - bucket: http
+    # Generic web catch-all last, so WinRM/WSDAPI don’t pollute this bucket.
+    service_names: [http, https]
+    ports:
+      - { proto: tcp, port: 80 }
+      - { proto: tcp, port: 443 }
+      - { proto: tcp, port: 8080 }
+      - { proto: tcp, port: 8000 }
+      - { proto: tcp, port: 8008 }
+      - { proto: tcp, port: 8081 }
+      - { proto: tcp, port: 8443 }
+      - { proto: tcp, port: 8888 }
+
+  # --------------------
+  # Email
+  # --------------------
+
+  - bucket: smtp
+    service_names: [smtp, smtps]
+    ports:
+      - { proto: tcp, port: 25 }
+      - { proto: tcp, port: 465 }
+      - { proto: tcp, port: 587 }
+
+  - bucket: imap
+    service_names: [imap, imaps]
+    ports:
+      - { proto: tcp, port: 143 }
+      - { proto: tcp, port: 993 }
+
+  - bucket: pop3
+    service_names: [pop3, pop3s]
+    ports:
+      - { proto: tcp, port: 110 }
+      - { proto: tcp, port: 995 }
+
+  # -------------
+  # File services
+  # -------------
+
+  - bucket: ftp
+    service_names: [ftp]
+    ports:
+      - { proto: tcp, port: 21 }
+
+  - bucket: nfs
+    service_names: [nfs, mountd]
+    ports:
+      - { proto: tcp, port: 2049 }
+      - { proto: udp, port: 2049 }
+
+  # --------------
+  # Databases
+  # --------------
+
+  - bucket: mysql
+    service_names: [mysql]
+    ports:
+      - { proto: tcp, port: 3306 }
+
+  - bucket: postgres
+    service_names: [postgresql]
+    ports:
+      - { proto: tcp, port: 5432 }
+
+  - bucket: mssql
+    service_names: [ms-sql-s, mssql]
+    ports:
+      - { proto: tcp, port: 1433 }
+
+  - bucket: mongodb
+    service_names: [mongodb]
+    ports:
+      - { proto: tcp, port: 27017 }
+
+  - bucket: redis
+    service_names: [redis]
+    ports:
+      - { proto: tcp, port: 6379 }
+
+  - bucket: elasticsearch
+    ports:
+      - { proto: tcp, port: 9200 }
+      - { proto: tcp, port: 9300 }
+
+  # -----------------------
+  # Containers / orchestration
+  # -----------------------
+
+  - bucket: k8s_api
+    # Common APIs that use HTTPS -- adding rule to prevent false positives
+    ports:
+      - { proto: tcp, port: 6443 }
+
+  - bucket: docker
+    ports:
+      - { proto: tcp, port: 2375 }
+      - { proto: tcp, port: 2376 }
+
+  - bucket: consul
+    ports:
+      - { proto: tcp, port: 8500 }
+      - { proto: tcp, port: 8501 }
+
+  # -----------------------
+  # Miscellaneous SSL
+  # -----------------------
+
+  # Adding ssl_misc so if there are any ports i missed i can add later
+  - bucket: ssl_misc
+    regex:
+      - field: service
+        pattern: "^ssl"
 
 
