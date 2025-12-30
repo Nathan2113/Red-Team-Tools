@@ -200,7 +200,7 @@ def parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(
         description="Generate krb5.conf from a template and optionally manage /etc/hosts for DC resolution."
     )
-    ap.add_argument("--realm", required=True, help="Kerberos realm (e.g., EXAMPLE.COM)")
+    ap.add_argument("--realm", required=True, help="Kerberos realm - usually all caps (e.g., EXAMPLE.COM)")
     ap.add_argument("--domain", required=True, help="DNS domain (e.g., example.com)")
 
     ap.add_argument("--kdc", action="append", default=[], help="KDC hostname/FQDN (repeatable)")
