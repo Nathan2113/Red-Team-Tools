@@ -1,4 +1,4 @@
-## Created by [https://github.com/Bilandzia](https://github.com/bbilandzia)
+## Created by [Bilandzia](https://github.com/bbilandzia)
 
 ### Remove BloodHound Community from system
 `sudo apt remove bloodhound`
