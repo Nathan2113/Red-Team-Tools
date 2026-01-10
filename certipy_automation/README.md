@@ -4,6 +4,8 @@ Do NOT need --target flag (only used with Kerberos authentication)
 <img width="791" height="103" alt="image" src="https://github.com/user-attachments/assets/104c8f6b-e6ac-4439-98b6-1c443331f451" />
 
 
+
+
 python3 certipy_automation.py \                                                                                                                                                         
   -u \<user\> \                                                                                                                                                                          
   -p \<pass\> -d \<DOMAIN\> \                                                                                                                                                         
@@ -17,13 +19,19 @@ Certipy Output 1:
 Certipy Output 2:
 <img width="1363" height="343" alt="image" src="https://github.com/user-attachments/assets/d20556cd-fd16-4200-9f5a-e6618483c76c" />
 
+
 INSERT JSON PARSE OUTPUT
+
+
 
 
 ## Kerberos Authentication Example
 Do NEED --target flag
 
 <img width="791" height="103" alt="image" src="https://github.com/user-attachments/assets/104c8f6b-e6ac-4439-98b6-1c443331f451" />
+
+
+
 
 python3 certipy_automation.py \                                             
   -u \<user\> \
@@ -37,5 +45,6 @@ Certipy Output 1:
 
 Certipy Output 2:
 <img width="1397" height="322" alt="image" src="https://github.com/user-attachments/assets/434deb3c-1d48-4feb-b81f-663526b89246" />
+
 
 INSERT JSON PARSE OUTPUT
