@@ -21,6 +21,7 @@ Certipy Output Part 2:
 
 <br><br>
 ### Parsed Output (from JSON)
+// from a different box when testing but output is the same across all
 <img width="1002" height="227" alt="image" src="https://github.com/user-attachments/assets/92218c81-a7c3-46e6-8c92-b13c5344931a" />
 
 
@@ -50,6 +51,7 @@ Certipy Output Part 2:
 
 <br><br>
 ### Parsed Output (from JSON)
+// from a different box when testing but output is the same across all
 <img width="1002" height="227" alt="image" src="https://github.com/user-attachments/assets/7a318223-8699-4fd8-b15c-3369ad4a77c3" />
 
 
