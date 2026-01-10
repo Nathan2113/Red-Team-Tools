@@ -1,71 +1,4 @@
 #!/usr/bin/env python3
-"""
-TODO:
-    fix json parsing so the script uses json instead of stdout
-    add exploitation for each ESC vuln (start with ESC4 since its only 2 commands
-        - must show user the commands it will run with description and ask for confirmation
-
-
-
-
-Purpose
--------
-This script orchestrates a single end-to-end run of an external directory
-enumeration tool and post-processes its JSON output into a human-readable
-report.
-
-High-level flow
----------------
-1. Parse command-line arguments (identity, domain, controller, auth mode, output paths).
-2. Create a structured run directory for this execution.
-3. Invoke the external tool with the selected authentication method.
-4. Capture the tool’s JSON output from stdout.
-5. Persist the raw JSON to disk for audit/debugging.
-6. Parse the JSON into a normalized internal representation.
-7. Generate a concise, text-based findings report.
-
-Authentication
---------------
-Exactly one authentication method must be selected:
-- Password-based authentication
-- Kerberos-based authentication (expects a valid ticket cache)
-
-Authentication-specific arguments are applied only at execution time; all
-other processing is shared.
-
-Output layout
--------------
-Each run produces a dedicated folder:
-
-    <base-out>/<domain>/<run-id>/
-        ├── *_certificates.txt          # Raw JSON captured from stdout
-        ├── *_certificates_parsed.txt   # Parsed, human-readable report
-        └── run_meta.json               # Non-secret execution metadata
-
-The raw JSON is intentionally preserved to allow offline parsing, debugging,
-or reprocessing without re-running the external tool.
-
-Execution behavior
-------------------
-- The external tool is executed once per run.
-- JSON is currently read from stdout for simplicity during development.
-- If stdout does not contain valid JSON, parsing is skipped and diagnostic
-  output is written to disk.
-
-Security notes
---------------
-- Passwords are never written to disk.
-- Command output may include sensitive information; handle output files
-  appropriately.
-- Printed commands may expose credentials during testing and should be
-  disabled or redacted in production use.
-
-Intended use
-------------
-This script is designed as a repeatable, auditable automation wrapper that
-separates tool execution from result parsing and reporting.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -78,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 import subprocess
+import os
 
 
 @dataclass(frozen=True)
@@ -86,6 +20,7 @@ class RunPaths:
     raw_out: Path
     parsed_out: Path
     meta_out: Path
+    json_out: Path
 
 
 @dataclass(frozen=True)
@@ -99,6 +34,7 @@ class Args:
     base_out: Path
     run_id: str
     paths: RunPaths
+    
 
 
 def validate_ip(value: str) -> str:
@@ -166,10 +102,11 @@ def compute_paths(domain: str, base_out: Path, run_id: str) -> RunPaths:
     run_dir = base_out / domain_stem / run_id
 
     raw_out = run_dir / f"{domain_stem}_certificates.txt"
+    json_out = run_dir / f"{domain_stem}_certipy"
     parsed_out = run_dir / f"{domain_stem}_certificates_parsed.txt"
     meta_out = run_dir / "run_meta.json"
 
-    return RunPaths(run_dir=run_dir, raw_out=raw_out, parsed_out=parsed_out, meta_out=meta_out)
+    return RunPaths(run_dir=run_dir, raw_out=raw_out, json_out=json_out, parsed_out=parsed_out, meta_out=meta_out)
 
 
 def write_meta(args: Args) -> None:
@@ -182,6 +119,7 @@ def write_meta(args: Args) -> None:
         "run_id": args.run_id,
         "run_dir": str(args.paths.run_dir),
         "raw_out": str(args.paths.raw_out),
+        "json_out": str(certipy_json_file(args.paths)),
         "parsed_out": str(args.paths.parsed_out),
         "created_at": datetime.now().isoformat(timespec="seconds"),
     }
@@ -191,6 +129,9 @@ def write_meta(args: Args) -> None:
 # -------------------------
 # Certipy JSON parsing
 # -------------------------
+
+def certipy_json_file(paths: RunPaths) -> Path:
+    return paths.json_out.with_suffix(".json")
 
 def parse_certipy_json_to_cas(raw_text: str, domain: str) -> list[dict[str, Any]]:
     """
@@ -268,7 +209,6 @@ def write_ca_template_report(cas: list[dict[str, Any]], out_path: Path) -> None:
     lines: list[str] = []
 
     for ca in cas:
-        lines.append(f"CA name - {ca.get('ca_name', '') or ''}")
         lines.append(f"DNS Name (target) - {ca.get('dns_name', '') or ''}")
         lines.append(f"Certificate Authorities - {ca.get('certificate_authorities', '') or ''}")
         lines.append(f"UPN - {ca.get('upn', '') or ''}")
@@ -309,7 +249,7 @@ def run_parse(raw_path: Path, parsed_out: Path, domain: str) -> int:
     try:
         cas = parse_certipy_json_to_cas(raw_text, domain=domain)
     except ValueError as e:
-        #print(f"[!] Failed to parse JSON: {e}", file=sys.stderr)
+        print(f"[!] Failed to parse JSON: {e}", file=sys.stderr)
         return 3
 
     write_ca_template_report(cas, parsed_out)
@@ -322,6 +262,10 @@ def run_parse(raw_path: Path, parsed_out: Path, domain: str) -> int:
 
 def main(argv: list[str]) -> int:
     ns = build_parser().parse_args(argv)
+    
+    ccache = os.environ.get("KRB5CCNAME")
+    if ccache:
+        os.environ["KRB5CCNAME"] = str(Path(ccache).expanduser().resolve())
 
     base_out = Path(ns.base_out).expanduser().resolve()
     run_id = ns.run_id or default_run_id()
@@ -347,20 +291,25 @@ def main(argv: list[str]) -> int:
     print(f"    {args.paths.run_dir}")
     print("[+] Planned outputs:")
     print(f"    raw   : {args.paths.raw_out.name}")
+    print(f"    json  : {certipy_json_file(args.paths).name}")
     print(f"    parsed: {args.paths.parsed_out.name}")
     print(f"    meta  : {args.paths.meta_out.name}")
 
-    raw_in = Path(ns.raw_in).expanduser().resolve() if ns.raw_in else args.paths.raw_out
-
-    if ns.parse_only or ns.raw_in:
+    if ns.raw_in:
+        raw_in = Path(ns.raw_in).expanduser().resolve()
         return run_parse(raw_in, args.paths.parsed_out, domain=args.domain)
+
+    if ns.parse_only:
+        return run_parse(certipy_json_file(args.paths), args.paths.parsed_out, domain=args.domain)
 
     # -------------------------------------------------
     # Certipy execution block (find only, auth via if/else)
     # -------------------------------------------------
     
     effective_target = args.target or f"dc.{args.domain}"
-    
+    domain_stem = sanitize_domain_for_filename(args.domain)
+    output_prefix = f"{domain_stem}_certipy"
+    expected_json = args.paths.run_dir / f"{output_prefix}_Certipy.json"
 
     cmd: list[str] = [
         "certipy-ad",
@@ -369,21 +318,26 @@ def main(argv: list[str]) -> int:
         "-vulnerable",
         "-u", f"{args.username}@{args.domain}",
         "-json",
-        "-output", args.domain, # uses domain name for parsed output
+        "-output", output_prefix, # uses domain name for parsed output
         "-stdout",
     ]
 
     if args.password:
         # password-authenticated run
+        pw = args.password.strip()
+        if not pw:
+            print("[!] Empty password provided.", file=sys.stderr)
+            return 6
         cmd.extend([
             "-p",
-            args.password,
+            pw,
         ])
 
     elif args.kerberos:
         # kerberos-authenticated run
         cmd.extend([
             "-k",
+            "-no-pass",
             "-target", effective_target,
         ])
 
@@ -398,6 +352,7 @@ def main(argv: list[str]) -> int:
         text=True,
         capture_output=True,
         check=False,
+        cwd=str(args.paths.run_dir),
     )
 
     # Always write stdout so we can parse or debug
@@ -414,9 +369,15 @@ def main(argv: list[str]) -> int:
 
     print(f"[+] Wrote raw output: {args.paths.raw_out}")
 
+    #json_path = args.paths.json_out.with_suffix(".json")
+
+    if expected_json.exists() and expected_json.stat().st_size > 0:
+        print(f"[+] Found Certipy JSON output: {expected_json}")
+        return run_parse(expected_json, args.paths.parsed_out, domain=args.domain)
+
+    print("[!] Certipy JSON file missing or empty. Falling back to stdout parse.", file=sys.stderr)
     return run_parse(args.paths.raw_out, args.paths.parsed_out, domain=args.domain)
 
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
-
