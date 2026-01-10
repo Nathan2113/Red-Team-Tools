@@ -21,7 +21,8 @@ Certipy Output Part 2:
 
 <br><br>
 ### Parsed Output (from JSON)
-<img width="1068" height="229" alt="image" src="https://github.com/user-attachments/assets/63baece9-9e88-482a-afa0-1d3ea4899fb0" />
+<img width="1002" height="227" alt="image" src="https://github.com/user-attachments/assets/92218c81-a7c3-46e6-8c92-b13c5344931a" />
+
 
 
 <br><br><br>
@@ -49,5 +50,6 @@ Certipy Output Part 2:
 
 <br><br>
 ### Parsed Output (from JSON)
-<img width="1068" height="229" alt="image" src="https://github.com/user-attachments/assets/63baece9-9e88-482a-afa0-1d3ea4899fb0" />
+<img width="1002" height="227" alt="image" src="https://github.com/user-attachments/assets/7a318223-8699-4fd8-b15c-3369ad4a77c3" />
+
 
