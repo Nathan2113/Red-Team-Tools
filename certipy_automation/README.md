@@ -5,9 +5,9 @@ Do NOT need --target flag (only used with Kerberos authentication)
 
 
 python3 certipy_automation.py \                                                                                                                                                         
-  -u <user> \                                                                                                                                                                          
-  -p '<pass>' -d <DOMAIN> \                                                                                                                                                         
-  --dc-ip <IP>
+  -u \<user\> \                                                                                                                                                                          
+  -p \<pass\> -d \<DOMAIN\> \                                                                                                                                                         
+  --dc-ip \<IP\>
   
 <img width="1557" height="339" alt="image" src="https://github.com/user-attachments/assets/91541a28-a4f9-44ff-9699-7307ea6ffdaf" />
 
@@ -23,11 +23,12 @@ INSERT JSON PARSE OUTPUT
 ## Kerberos Authentication Example
 Do NEED --target flag
 
+<img width="791" height="103" alt="image" src="https://github.com/user-attachments/assets/104c8f6b-e6ac-4439-98b6-1c443331f451" />
 
 python3 certipy_automation.py \                                             
-  -u <user> \
-  -k -d <DOMAIN> \
-  --dc-ip <IP> --target <target> // EXAMPLE: dc01.certified.htb
+  -u \<user\> \
+  -k -d \<DOMAIN\> \
+  --dc-ip \<IP\> --target <target> // EXAMPLE: dc01.certified.htb
   
 <img width="1786" height="343" alt="image" src="https://github.com/user-attachments/assets/7592c563-ebae-443d-a06b-f4a58d76c399" />
 
