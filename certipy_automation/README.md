@@ -1,3 +1,6 @@
+# Testing
+Tested thoroughly on HackTheBox machines Certified, Authority, and EscapeTwo. Worked without fail on all three.
+
 # Password Authentication Example
 Do NOT need --target flag (only used with Kerberos authentication)
 <br><br>
