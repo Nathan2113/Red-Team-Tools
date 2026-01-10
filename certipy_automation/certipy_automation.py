@@ -209,10 +209,10 @@ def write_ca_template_report(cas: list[dict[str, Any]], out_path: Path) -> None:
     lines: list[str] = []
 
     for ca in cas:
-        lines.append(f"DNS Name (target) - {ca.get('dns_name', '') or ''}")
+        lines.append(f"DNS Name (target)       - {ca.get('dns_name', '') or ''}")
         lines.append(f"Certificate Authorities - {ca.get('certificate_authorities', '') or ''}")
-        lines.append(f"UPN - {ca.get('upn', '') or ''}")
-        lines.append(f"Config - {ca.get('config', '') or ''}")
+        lines.append(f"UPN                     - {ca.get('upn', '') or ''}")
+        lines.append(f"Config                  - {ca.get('config', '') or ''}")
 
         lines.append("Template Name")
 
