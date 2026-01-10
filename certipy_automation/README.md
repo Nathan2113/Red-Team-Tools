@@ -1,4 +1,4 @@
-## Password Authentication Example
+# Password Authentication Example
 Do NOT need --target flag (only used with Kerberos authentication)
 <br><br>
 
@@ -25,10 +25,10 @@ Certipy Output Part 2:
 
 
 <br><br><br>
-## Kerberos Authentication Example
+# Kerberos Authentication Example
 Do NEED --target flag
 
-<br><br>
+<br>
 
 ### Command:
 python3 certipy_automation.py \                                                     
