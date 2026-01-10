@@ -27,10 +27,8 @@ Certipy Output Part 2:
 <br><br><br>
 ## Kerberos Authentication Example
 Do NEED --target flag
-<br>
-<img width="791" height="103" alt="image" src="https://github.com/user-attachments/assets/104c8f6b-e6ac-4439-98b6-1c443331f451" />
 
-<br><br><br>
+<br><br>
 
 ### Command:
 python3 certipy_automation.py \                                                     
